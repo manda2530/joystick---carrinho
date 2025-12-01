@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
@@ -38,7 +39,7 @@ const char pinJoystick[num_botoes] = {
     pinBotaoK};
 
 const int mqtt_port = 8883;
-const char *mqtt_id = "Amandinhaa_esp32";
+const char *mqtt_id = "Amanda_esp32";
 const char *mqtt_SUB_controle = "carrinho/controle";
 const char *mqtt_PUB_controle = "carrinho/controle";
 const char *mqtt_SUB_dash = "carrinho/dash";
@@ -54,6 +55,7 @@ Timezone tempo;
 bool atualizacaoSenha = 0;
 bool senhaAtivado = 0;
 int senha = 0;
+String nomeUsuario = "";
 
 enum pinsBotoes
 {
@@ -81,12 +83,11 @@ void setup()
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 1);
-  lcd.print("senha:");
+  lcd.print("Codigo:");
 
   espClient.setCACert(AWS_ROOT_CA);
   espClient.setCertificate(AWS_CERT);
   espClient.setPrivateKey(AWS_KEY);
-  mqtt.setBufferSize(2048);
   mqtt.setServer(AWS_BROKER, mqtt_port);
   mqtt.setCallback(Callback);
 
@@ -232,6 +233,17 @@ void Callback(char *topic, byte *payload, unsigned int Length)
 
       atualizacaoSenha = 1;
     }
+
+    if (!doc["nome"].isNull())
+    {
+      if (nomeUsuario == "")
+      {
+        String nomeString = doc["nome"];
+        nomeUsuario = nomeString;
+        atualizacaoSenha = 1;
+      }
+
+    }
   }
 }
 
@@ -257,7 +269,7 @@ void conectaMQTT()
 
 bool programaSenha()
 {
-  static int senhaAtualizar = random(1000, 1999);
+  static int senhaAtualizar = random(1000, 9999);
   static int segundos = 0;
   static int minutos = 0;
   static int intervalo = 0;
@@ -268,27 +280,22 @@ bool programaSenha()
 
   if (senha == senhaAtualizar)
   {
-    if (!senhaAtivado)
+    if (millis() - tempoAntes > 2000)
     {
-      minutos += 5; // adiciona 5 minutos só uma vez
-      senhaAtivado = true;
-      atualizacaoSenha = 1;
-
-      // if (millis() - tempoAntes > 2000)
-      // {
-      //   if (senha == senhaAtualizar)
-      //     senhaAtivado = true;
-      //   else
-      //   {
-      //     senhaAtivado = false;
-      //     minutos = 0;
-      //   }
-      // }
-
-      Serial.println("Senha correta!");
+      if (nomeUsuario != "")
+      {
+        if (!senhaAtivado)
+        {
+          minutos += 2; // adiciona 5 minutos só uma vez
+          senhaAtivado = true;
+          atualizacaoSenha = 1;
+        }
+      }
     }
   }
 
+  else
+    senhaAtivado = false;
 
   if (agora - tempoAntes02 > 1000)
   {
@@ -306,8 +313,9 @@ bool programaSenha()
       minutos = 0;
       segundos = 30;
 
-      senhaAtualizar = random(1000, 1999);
+      senhaAtualizar = random(1000, 9999);
       senhaAtivado = false;
+      nomeUsuario = "";
     }
 
     tempoAntes02 = agora;
@@ -315,23 +323,30 @@ bool programaSenha()
 
   if (atualizacaoSenha)
   {
-    lcd.setCursor(6, 1);
-    lcd.print(senhaAtualizar);
-
     lcd.setCursor(15, 0);
     lcd.printf("%02d:%02d", minutos, segundos);
 
-    lcd.setCursor(0, 3);
-    lcd.printf("msg: %d", senha);
-
     if (!senhaAtivado)
     {
+      lcd.setCursor(0, 1);
+      lcd.printf("Codigo: %d", senhaAtualizar);
+
       lcd.setCursor(0, 3);
       lcd.print("         ");
     }
 
+    else
+    {
+      if(nomeUsuario != "")
+      {
+        lcd.setCursor(0, 1);
+        lcd.printf("Nome: %s                  ", nomeUsuario);
+        lcd.setCursor(0, 3);
+        lcd.print("Sucesso!!");
+      }
+    }
+
     doc["estado_acesso"] = senhaAtivado;
-    doc["timesTamp"] = tempo.now();
 
     String msg;
     serializeJson(doc, msg);
