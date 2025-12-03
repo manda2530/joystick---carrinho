@@ -278,9 +278,11 @@ void programaSenha()
   static int segundos = 0;
   static int minutos = 0;
   static int intervalo = 0;
+  static int resetar = 0;
 
   static unsigned long tempoAntes = 0;
   static unsigned long tempoAntes02 = 0;
+  static unsigned long tempoAnterior = 0;
   unsigned long agora = millis();
 
   if (senha == senhaAtualizar)
@@ -298,6 +300,26 @@ void programaSenha()
         }
       }
     }
+  }
+
+  if (joystick[5].fell())
+  {
+    ++resetar;
+  }
+
+  if (millis() - tempoAnterior > 3000)
+  {
+    if (resetar == 1)
+      resetar = 0;
+
+    tempoAnterior = millis();
+  }
+
+  if (resetar >= 2)
+  {
+    resetar = 0;
+    minutos -= 2;
+    segundos -= 30;
   }
 
   if (agora - tempoAntes02 > 1000)
