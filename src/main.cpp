@@ -1,4 +1,3 @@
-
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
@@ -21,7 +20,7 @@
 #define pinBotaoD 26
 #define pinBotaoE 27
 #define pinBotaoF 14
-#define pinBotaoK 12
+#define pinBotaoK 4
 
 // Define os pinos analógicos utilizados para os eixos X e Y do joystick //
 #define pinAnalogicoX 34
@@ -39,7 +38,7 @@ const char pinJoystick[num_botoes] = {
     pinBotaoK};
 
 const int mqtt_port = 8883;
-const char *mqtt_id = "Amanda_esp32";
+const char *mqtt_id = "Amandinhaa_esp32";
 const char *mqtt_SUB_controle = "carrinho/controle";
 const char *mqtt_PUB_controle = "carrinho/controle";
 const char *mqtt_SUB_dash = "carrinho/dash";
@@ -48,12 +47,13 @@ const char *mqtt_PUB_dash = "carrinho/dash";
 WiFiClientSecure espClient;
 PubSubClient mqtt(espClient);
 Bounce *joystick = new Bounce[num_botoes]; // Vetor de objetos Bounce para fazer debounce dos botões
-JsonDocument doc;
+
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 Timezone tempo;
 
 bool atualizacaoSenha = 0;
-bool senhaAtivado = 0;
+bool senhaAtivado = false;
+bool senhaAtivadoAntes = 0;
 int senha = 0;
 String nomeUsuario = "";
 
@@ -70,7 +70,7 @@ enum pinsBotoes
 
 void conectaMQTT();
 void Callback(char *, byte *, unsigned int);
-bool programaSenha();
+void programaSenha();
 
 void setup()
 {
@@ -82,12 +82,15 @@ void setup()
 
   lcd.init();
   lcd.backlight();
+  // lcd.setCursor(0, 0);
+  // lcd.print("Nome:");
   lcd.setCursor(0, 1);
   lcd.print("Codigo:");
 
   espClient.setCACert(AWS_ROOT_CA);
   espClient.setCertificate(AWS_CERT);
   espClient.setPrivateKey(AWS_KEY);
+  mqtt.setBufferSize(2048);
   mqtt.setServer(AWS_BROKER, mqtt_port);
   mqtt.setCallback(Callback);
 
@@ -103,6 +106,7 @@ void loop()
     conectaMQTT();
 
   mqtt.loop();
+  JsonDocument doc;
 
   programaSenha();
 
@@ -136,8 +140,6 @@ void loop()
       atualizacao = 1;                      // Marca que houve alguma atualização98
     }
   }
-
-  //  ------------------------------ Leitura analógica com filtro (sem delay) ------------------------------------- //
 
   // Leitura bruta reduzida (igual ao que você usava: /200)
 
@@ -193,6 +195,7 @@ void loop()
   {
     doc["AnalogX"] = suavizacaoX;
     doc["AnalogY"] = suavizacaoY;
+
     atualizacao = 1;
     ultimaMudanca = millis();
   }
@@ -207,7 +210,6 @@ void loop()
     String msg;
     serializeJson(doc, msg);
     mqtt.publish(mqtt_PUB_controle, msg.c_str());
-    doc.clear(); // opcional: limpa doc após publicar
   }
 }
 
@@ -219,6 +221,8 @@ void Callback(char *topic, byte *payload, unsigned int Length)
   Serial.println(msg);
   msg.trim();
 
+  JsonDocument doc;
+
   DeserializationError erro = deserializeJson(doc, msg);
 
   if (erro)
@@ -228,21 +232,22 @@ void Callback(char *topic, byte *payload, unsigned int Length)
   {
     if (!doc["senha"].isNull())
     {
-      String senhaString = doc["senha"];
-      senha = senhaString.toInt();
+      if (!senhaAtivado)
+      {
+        String senhaString = doc["senha"];
+        senha = senhaString.toInt();
 
-      atualizacaoSenha = 1;
+        atualizacaoSenha = 1;
+      }
     }
 
     if (!doc["nome"].isNull())
     {
       if (nomeUsuario == "")
       {
-        String nomeString = doc["nome"];
-        nomeUsuario = nomeString;
-        atualizacaoSenha = 1;
+        String nome = doc["nome"];
+        nomeUsuario = nome;
       }
-
     }
   }
 }
@@ -267,7 +272,7 @@ void conectaMQTT()
   }
 }
 
-bool programaSenha()
+void programaSenha()
 {
   static int senhaAtualizar = random(1000, 9999);
   static int segundos = 0;
@@ -280,9 +285,10 @@ bool programaSenha()
 
   if (senha == senhaAtualizar)
   {
+
     if (millis() - tempoAntes > 2000)
     {
-      if (nomeUsuario != "")
+      if (nomeUsuario == nomeUsuario)
       {
         if (!senhaAtivado)
         {
@@ -293,9 +299,6 @@ bool programaSenha()
       }
     }
   }
-
-  else
-    senhaAtivado = false;
 
   if (agora - tempoAntes02 > 1000)
   {
@@ -329,31 +332,38 @@ bool programaSenha()
     if (!senhaAtivado)
     {
       lcd.setCursor(0, 1);
-      lcd.printf("Codigo: %d", senhaAtualizar);
+      lcd.printf("Codigo: %d             ", senhaAtualizar);
 
       lcd.setCursor(0, 3);
-      lcd.print("         ");
+      lcd.print("          ");
     }
 
     else
     {
-      if(nomeUsuario != "")
+      if (nomeUsuario == nomeUsuario)
       {
         lcd.setCursor(0, 1);
-        lcd.printf("Nome: %s                  ", nomeUsuario);
-        lcd.setCursor(0, 3);
-        lcd.print("Sucesso!!");
+        lcd.printf("Nome: %s       ", nomeUsuario);
       }
+
+      lcd.setCursor(0, 3);
+      lcd.print("Sucesso!!!");
     }
+
+    JsonDocument doc;
 
     doc["estado_acesso"] = senhaAtivado;
 
     String msg;
-    serializeJson(doc, msg);
-    mqtt.publish(mqtt_PUB_dash, msg.c_str());
+
+    if (senhaAtivado != senhaAtivadoAntes)
+    {
+      serializeJson(doc, msg);
+      mqtt.publish(mqtt_PUB_dash, msg.c_str());
+
+      senhaAtivadoAntes = senhaAtivado;
+    }
 
     atualizacaoSenha = 0;
   }
-
-  return senhaAtivado;
 }
